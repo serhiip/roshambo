@@ -84,30 +84,40 @@ final class CliRockPaperScissors[F[_]: Console: Monad] extends RockPaperScissors
 }
 
 final class BestOfNGame[F[_]: Monad: Console](baseGame: RockPaperScissors[F], totalGames: Int) {
-  var results = List.empty[Result]
 
-  def rounds(player1: Player[F], player2: Player[F]): F[Result] = {
-    baseGame
-      .round(player1: Player[F], player2: Player[F])
-      .replicateA(totalGames)
-      .map(games => results = games)
-      .flatMap(_ => printRounds)
-      .map(_ => computeResult(player1, player2))
-  }
+  def rounds(player1: Player[F], player2: Player[F]): F[Result] =
+    roundsRec(player1, player2, List.empty, totalGames)
 
-  private def computeResult(player1: Player[F], player2: Player[F]): Result = {
-    var player1WinCount = 0
-    var player2WinCount = 0
-    results foreach {
-      case Result.Win(p) => if p == player1 then player1WinCount += 1 else player2WinCount += 1
-      case Result.Tie    => ()
+  private def roundsRec(
+      player1: Player[F],
+      player2: Player[F],
+      results: List[Result],
+      roundsLeft: Int
+  ): F[Result] =
+    if (roundsLeft == 0) {
+      for {
+        _      <- printRounds(results)
+        result <- computeResult(player1, player2, results).pure[F]
+      } yield result
+    } else {
+      baseGame.round(player1, player2).flatMap { result =>
+        roundsRec(player1, player2, results :+ result, roundsLeft - 1)
+      }
     }
-    if player1WinCount > player2WinCount then Result.Win(player1)
-    else if player2WinCount > player1WinCount then Result.Win(player2)
+
+  private def computeResult(player1: Player[F], player2: Player[F], results: List[Result]): Result = {
+    val (player1WinCount, player2WinCount) = results.foldLeft((0, 0)) {
+      case ((p1Wins, p2Wins), Result.Win(p)) =>
+        if (p == player1) (p1Wins + 1, p2Wins) else (p1Wins, p2Wins + 1)
+      case ((p1Wins, p2Wins), Result.Tie)    => (p1Wins, p2Wins)
+    }
+
+    if (player1WinCount > player2WinCount) Result.Win(player1)
+    else if (player2WinCount > player1WinCount) Result.Win(player2)
     else Result.Tie
   }
 
-  private def printRounds(using Console[F]): F[Unit] = {
+  private def printRounds(results: List[Result])(using Console[F]): F[Unit] = {
     results.zipWithIndex.traverse_ { case (result, index) =>
       Console[F].println(s"Round ${index + 1}: ${result.show}")
     }
