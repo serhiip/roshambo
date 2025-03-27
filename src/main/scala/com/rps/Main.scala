@@ -9,6 +9,7 @@ import cats.Show
 import javax.sound.sampled.Clip
 import cats.Applicative
 import cats.Functor
+import cats.data.StateT
 
 enum Move:
   case Rock, Paper, Scissors
@@ -85,43 +86,48 @@ final class CliRockPaperScissors[F[_]: Console: Monad] extends RockPaperScissors
 
 final class BestOfNGame[F[_]: Monad: Console](baseGame: RockPaperScissors[F], totalGames: Int) {
 
-  def rounds(player1: Player[F], player2: Player[F]): F[Result] =
-    roundsRec(player1, player2, List.empty, totalGames)
+  type GameState[A] = StateT[F, List[Result], A]
 
-  private def roundsRec(
-      player1: Player[F],
-      player2: Player[F],
-      results: List[Result],
-      roundsLeft: Int
-  ): F[Result] =
-    if (roundsLeft == 0) {
-      for {
-        _      <- printRounds(results)
-        result <- computeResult(player1, player2, results).pure[F]
-      } yield result
-    } else {
-      baseGame.round(player1, player2).flatMap { result =>
-        roundsRec(player1, player2, results :+ result, roundsLeft - 1)
-      }
-    }
+  private def playRound(player1: Player[F], player2: Player[F]): GameState[Result] =
+    for {
+      roundResult <- StateT.liftF(baseGame.round(player1, player2))
+      _           <- StateT.modify[F, List[Result]](_ :+ roundResult)
+    } yield roundResult
 
-  private def computeResult(player1: Player[F], player2: Player[F], results: List[Result]): Result = {
-    val (player1WinCount, player2WinCount) = results.foldLeft((0, 0)) {
-      case ((p1Wins, p2Wins), Result.Win(p)) =>
-        if (p == player1) (p1Wins + 1, p2Wins) else (p1Wins, p2Wins + 1)
-      case ((p1Wins, p2Wins), Result.Tie)    => (p1Wins, p2Wins)
-    }
+  def rounds(player1: Player[F], player2: Player[F]): F[Result] = {
+    val game = for {
+      allRoundResults <- playRound(player1, player2).replicateA(totalGames)
+      _               <- printRounds
+      finalResult     <- computeResult(player1, player2)
+    } yield finalResult
 
+    game.runA(List.empty)
+  }
+
+  private def computeResult(player1: Player[F], player2: Player[F]): GameState[Result] = for {
+    results <- StateT.get[F, List[Result]]
+    scores   = results.foldLeft((0, 0)) {
+                 case ((p1Wins, p2Wins), Result.Win(p)) if p == player1 => (p1Wins + 1, p2Wins)
+                 case ((p1Wins, p2Wins), Result.Win(p)) if p == player2 => (p1Wins, p2Wins + 1)
+                 case (wins, Result.Tie)                                => wins
+                 case (wins, _)                                         => wins
+               }
+
+    (player1WinCount, player2WinCount) = scores
+  } yield
     if (player1WinCount > player2WinCount) Result.Win(player1)
     else if (player2WinCount > player1WinCount) Result.Win(player2)
     else Result.Tie
-  }
 
-  private def printRounds(results: List[Result])(using Console[F]): F[Unit] = {
-    results.zipWithIndex.traverse_ { case (result, index) =>
-      Console[F].println(s"Round ${index + 1}: ${result.show}")
-    }
-  }
+  private def printRounds(using C: Console[F]): GameState[Unit] =
+    for {
+      results <- StateT.get[F, List[Result]]
+      _       <- StateT.liftF(
+                   results.zipWithIndex.traverse_ { case (result, index) =>
+                     C.println(s"Round ${index + 1}: ${result.show}")
+                   }
+                 )
+    } yield ()
 }
 
 object Main extends IOApp.Simple {
@@ -134,7 +140,7 @@ object Main extends IOApp.Simple {
 
     for {
       result <- game.rounds(player1, player2)
-      _      <- IO.println(result.show)
+      _      <- IO.println(result.show + " (and the game)")
     } yield ()
   }
 }
