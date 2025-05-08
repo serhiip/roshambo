@@ -12,6 +12,9 @@ lazy val root = (project in file(".")).settings(
     // standard "effect" library (Queues, Console, Random etc.)
     "org.typelevel" %% "cats-effect-std" % "3.5.4",
     "org.typelevel" %% "cats-effect-testing-specs2" % "1.4.0" % Test,
-    "com.google.cloud" % "google-cloud-vertexai" % "1.21.0"
+    "com.google.cloud" % "google-cloud-vertexai" % "1.21.0",
+    "io.circe" %% "circe-core" % "0.14.9",
+    "io.circe" %% "circe-generic" % "0.14.9",
+    "io.circe" %% "circe-parser" % "0.14.9"
   )
 )
