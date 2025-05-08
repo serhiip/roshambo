@@ -50,7 +50,7 @@ object Result {
   }
 }
 
-sealed abstract trait Player[F[_]] {
+abstract trait Player[F[_]] {
   val name: String
   def getMove(): F[Move]
 }
@@ -134,14 +134,13 @@ final class BestOfNGame[F[_]: Monad: Console](baseGame: RockPaperScissors[F], to
 object Main extends IOApp.Simple {
 
   def run: IO[Unit] = {
-    val player1  = new CliPlayer[IO]("Bob")
-    val player2  = new CliPlayer[IO]("Alice")
     val baseGame = new CliRockPaperScissors[IO]
     val game     = new BestOfNGame(baseGame, totalGames = 3)
 
     for {
       userPlayerName <- IO.println("Enter your name: ") >> IO.readLine
       userPlayer      = new CliPlayer[IO](userPlayerName)
+      player2        <- GeminiPlayer[IO]("Gemini", debug = true)
       result         <- game.rounds(userPlayer, player2)
       _              <- IO.println(s"Game result: ${result.show}")
     } yield ()
