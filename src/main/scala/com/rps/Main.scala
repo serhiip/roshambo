@@ -46,29 +46,29 @@ abstract trait Player[F[_]] {
 
   val name: String
 
-  def getMove(): F[Move]
+  def getMove(currentGameHistory: List[Result]): F[Move]
 }
 
 sealed abstract trait RockPaperScissors[F[_]] {
-  def round(player1: Player[F], player2: Player[F]): F[Result]
+  def round(player1: Player[F], player2: Player[F], currentGameHistory: List[Result]): F[Result]
 }
 
 final class CliPlayer[F[_]: Console: Monad](val name: String) extends Player[F] {
 
-  override def getMove(): F[Move] = for {
+  override def getMove(currentGameHistory: List[Result]): F[Move] = for {
     _      <- Console[F].println(s"Your next move $name: ")
     move   <- Console[F].readLine.map(Move.fromString)
     result <-
-      move.fold(error => Console[F].println(error.show) >> getMove(), _.pure[F])
+      move.fold(error => Console[F].println(error.show) >> getMove(currentGameHistory), _.pure[F])
   } yield result
 
 }
 
 final class CliRockPaperScissors[F[_]: Console: Monad] extends RockPaperScissors[F] {
 
-  override def round(player1: Player[F], player2: Player[F]): F[Result] = for {
-    choiceOne <- player1.getMove()
-    choiceTwo <- player2.getMove()
+  override def round(player1: Player[F], player2: Player[F], currentGameHistory: List[Result]): F[Result] = for {
+    choiceOne <- player1.getMove(currentGameHistory)
+    choiceTwo <- player2.getMove(currentGameHistory)
 
     result = (choiceOne, choiceTwo) match {
                case Move.Rock -> Move.Rock         => Result.Tie
@@ -90,8 +90,9 @@ final class BestOfNGame[F[_]: Monad: Console](baseGame: RockPaperScissors[F], to
 
   private def playRound(player1: Player[F], player2: Player[F]): GameState[Result] =
     for {
-      roundResult <- StateT.liftF(baseGame.round(player1, player2))
-      _           <- StateT.modify[F, List[Result]](_ :+ roundResult)
+      currentHistory <- StateT.get[F, List[Result]]
+      roundResult    <- StateT.liftF(baseGame.round(player1, player2, currentHistory))
+      _              <- StateT.modify[F, List[Result]](_ :+ roundResult)
     } yield roundResult
 
   def rounds(player1: Player[F], player2: Player[F]): F[Result] = {
