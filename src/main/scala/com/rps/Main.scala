@@ -35,16 +35,23 @@ enum Result:
 
 object Result {
 
-  implicit val showForResult: Show[Result] = Show[String].contramap[Result] {
+  opaque type GameResult = Result
+
+  def gameResult(result: Result): GameResult = result
+
+  given Show[Result] = Show[String].contramap[Result] {
     case Win(p) => s"${p.name} won this round"
     case Tie    => s"There was a tie!"
+  }
+
+  given Show[GameResult] = Show[String].contramap[GameResult] {
+    case Win(p) => s"${p.name} won this game!"
+    case Tie    => s"There was a tie in this game!"
   }
 }
 
 sealed abstract trait Player[F[_]] {
-
   val name: String
-
   def getMove(): F[Move]
 }
 
@@ -85,8 +92,8 @@ final class CliRockPaperScissors[F[_]: Console: Monad] extends RockPaperScissors
 
 final class BestOfNGame[F[_]: Monad: Console](baseGame: RockPaperScissors[F], totalGames: Int) {
 
-  def rounds(player1: Player[F], player2: Player[F]): F[Result] =
-    roundsRec(player1, player2, List.empty, totalGames)
+  def rounds(player1: Player[F], player2: Player[F]): F[Result.GameResult] =
+    roundsRec(player1, player2, List.empty, totalGames).map(Result.gameResult)
 
   private def roundsRec(
       player1: Player[F],
@@ -133,8 +140,10 @@ object Main extends IOApp.Simple {
     val game     = new BestOfNGame(baseGame, totalGames = 3)
 
     for {
-      result <- game.rounds(player1, player2)
-      _      <- IO.println(result.show)
+      userPlayerName <- IO.println("Enter your name: ") >> IO.readLine
+      userPlayer      = new CliPlayer[IO](userPlayerName)
+      result         <- game.rounds(userPlayer, player2)
+      _              <- IO.println(s"Game result: ${result.show}")
     } yield ()
   }
 }
