@@ -140,7 +140,7 @@ object Main extends IOApp.Simple {
     for {
       userPlayerName <- IO.println("Enter your name: ") >> IO.readLine
       userPlayer      = new CliPlayer[IO](userPlayerName)
-      player2        <- GeminiPlayer[IO]("Gemini", debug = true)
+      player2        <- GeminiPlayer[IO]("AI", debug = true)
       result         <- game.rounds(userPlayer, player2)
       _              <- IO.println(s"Game result: ${result.show}")
     } yield ()
